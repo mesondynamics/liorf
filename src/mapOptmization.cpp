@@ -72,7 +72,7 @@ public:
     Eigen::MatrixXd poseCovariance;
 
     rclcpp::Subscription<liorf::msg::CloudInfo>::SharedPtr subCloud;
-    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr subGPS;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudSurround;
@@ -87,7 +87,7 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCloudRegisteredRaw;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
     rclcpp::Publisher<liorf::msg::CloudInfo>::SharedPtr pubSLAMInfo;
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubGpsOdom;
+    // rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubGpsOdom;
 
     rclcpp::Service<liorf::srv::SaveMap>::SharedPtr srvSaveMap;
 
@@ -169,7 +169,7 @@ public:
 
         subCloud = create_subscription<liorf::msg::CloudInfo>("liorf/deskew/cloud_info", QosPolicy(history_policy, reliability_policy),
                     std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
-        subGPS = create_subscription<sensor_msgs::msg::NavSatFix>(gpsTopic, QosPolicy(history_policy, reliability_policy),
+        subGPS = create_subscription<nav_msgs::msg::Odometry>(gpsTopic, QosPolicy(history_policy, reliability_policy),
                     std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
         subLoop = create_subscription<std_msgs::msg::Float64MultiArray>("lio_loop/loop_closure_detection", QosPolicy(history_policy, reliability_policy),
                     std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
@@ -186,7 +186,6 @@ public:
         pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>("liorf/mapping/cloud_registered", QosPolicy(history_policy, reliability_policy));
         pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>("liorf/mapping/cloud_registered_raw", QosPolicy(history_policy, reliability_policy));
         pubSLAMInfo = create_publisher<liorf::msg::CloudInfo>("liorf/mapping/slam_info", QosPolicy(history_policy, reliability_policy));
-        pubGpsOdom = create_publisher<nav_msgs::msg::Odometry>("liorf/mapping/gps_odom", QosPolicy(history_policy, reliability_policy));
 
         srvSaveMap = create_service<liorf::srv::SaveMap>("liorf/save_map", 
                         std::bind(&mapOptimization::saveMapService, this, std::placeholders::_1, std::placeholders::_2 ));
@@ -276,33 +275,9 @@ public:
         }
     }
 
-    void gpsHandler(const sensor_msgs::msg::NavSatFix::SharedPtr gpsMsg)
+    void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg)
     {
-        if (gpsMsg->status.status != 0)
-            return;
-
-        Eigen::Vector3d trans_local_;
-        static bool first_gps = false;
-        if (!first_gps) {
-            first_gps = true;
-            gps_trans_.Reset(gpsMsg->latitude, gpsMsg->longitude, gpsMsg->altitude);
-        }
-
-        gps_trans_.Forward(gpsMsg->latitude, gpsMsg->longitude, gpsMsg->altitude, trans_local_[0], trans_local_[1], trans_local_[2]);
-
-        nav_msgs::msg::Odometry gps_odom;
-        gps_odom.header = gpsMsg->header;
-        gps_odom.header.frame_id = "map";
-        gps_odom.pose.pose.position.x = trans_local_[0];
-        gps_odom.pose.pose.position.y = trans_local_[1];
-        gps_odom.pose.pose.position.z = trans_local_[2];
-        tf2::Quaternion quat_tf;
-        quat_tf.setRPY(0.0, 0.0, 0.0);
-        geometry_msgs::msg::Quaternion quat_msg;
-        tf2::convert(quat_tf, quat_msg);
-        gps_odom.pose.pose.orientation = quat_msg;
-        pubGpsOdom->publish(gps_odom);
-        gpsQueue.push_back(gps_odom);
+        gpsQueue.push_back(*gpsMsg);
     }
 
     void pointAssociateToMap(PointType const * const pi, PointType * const po)
@@ -367,20 +342,6 @@ public:
         thisPose6D.yaw   = transformIn[2];
         return thisPose6D;
     }
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
 
     bool saveMapService(const std::shared_ptr<liorf::srv::SaveMap::Request> req,
                                 std::shared_ptr<liorf::srv::SaveMap::Response> res)
@@ -1408,21 +1369,25 @@ public:
 
     void addGPSFactor()
     {
-        if (gpsQueue.empty())
+        if (gpsQueue.empty()) {
+            RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "gpsQueue empty");
             return;
+        }
 
         // wait for system initialized and settles down
-        if (cloudKeyPoses3D->points.empty())
+        if (cloudKeyPoses3D->points.empty()) {
+            // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "cloudKeyPoses3D empty");
             return;
-        else
-        {
+        } else {
             if (common_lib_->pointDistance(cloudKeyPoses3D->front(), cloudKeyPoses3D->back()) < 5.0)
                 return;
         }
 
         // pose covariance small, no need to correct
-        if (poseCovariance(3,3) < poseCovThreshold && poseCovariance(4,4) < poseCovThreshold)
+        if (poseCovariance(3,3) < poseCovThreshold && poseCovariance(4,4) < poseCovThreshold) {
+            // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "poseCovariance < %f, no need to correct gps", poseCovThreshold);
             return;
+        }
 
         // last gps position
         static PointType lastGPSPoint;
@@ -1432,11 +1397,13 @@ public:
             if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2)
             {
                 // message too old
+                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 gpsQueue.pop_front();
             }
             else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2)
             {
                 // message too new
+                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 break;
             }
             else
@@ -1475,7 +1442,8 @@ public:
                     lastGPSPoint = curGPSPoint;
 
                 gtsam::Vector Vector3(3);
-                Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);
+                // Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);
+                Vector3 << noise_x, noise_y, noise_z;
                 noiseModel::Diagonal::shared_ptr gps_noise = noiseModel::Diagonal::Variances(Vector3);
                 gtsam::GPSFactor gps_factor(cloudKeyPoses3D->size(), gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);
                 gtSAMgraph.add(gps_factor);

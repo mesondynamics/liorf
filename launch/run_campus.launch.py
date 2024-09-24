@@ -15,7 +15,7 @@ def generate_launch_description():
     params_declare = DeclareLaunchArgument(
         'params_file',
         default_value=os.path.join(
-            share_dir, 'config', 'mulran.yaml'),
+            share_dir, 'config', 'lio_sam_campus.yaml'),
         description='FPath to the ROS2 parameters file to use.')
 
     return LaunchDescription([

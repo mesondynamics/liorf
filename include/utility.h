@@ -92,6 +92,7 @@ public:
     bool useGpsElevation;
     float gpsCovThreshold;
     float poseCovThreshold;
+    float gpsFusionIntervalDistance;
 
     // Save pcd
     bool savePCD;
@@ -188,6 +189,8 @@ public:
         get_parameter("gpsCovThreshold", gpsCovThreshold);
         declare_parameter<float>("poseCovThreshold", 25.0f);
         get_parameter("poseCovThreshold", poseCovThreshold);
+        declare_parameter<float>("gpsFusionIntervalDistance", 5.0f);
+        get_parameter("gpsFusionIntervalDistance", gpsFusionIntervalDistance);
 
         declare_parameter<bool>("savePCD", false);
         get_parameter("savePCD", savePCD);

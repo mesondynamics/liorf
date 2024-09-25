@@ -1436,7 +1436,7 @@ public:
                 curGPSPoint.x = gps_x;
                 curGPSPoint.y = gps_y;
                 curGPSPoint.z = gps_z;
-                if (common_lib_->pointDistance(curGPSPoint, lastGPSPoint) < 5.0)
+                if (common_lib_->pointDistance(curGPSPoint, lastGPSPoint) < gpsFusionIntervalDistance)
                     continue;
                 else
                     lastGPSPoint = curGPSPoint;

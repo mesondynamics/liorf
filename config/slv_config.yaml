@@ -18,8 +18,9 @@
     # GPS Settings
     useImuHeadingInitialization: true           # if using GPS data, set to "true"
     useGpsElevation: true                       # if GPS elevation is bad, set to "false"
-    gpsCovThreshold: 2.0                        # m^2, threshold for using GPS data
-    poseCovThreshold: 1.0                       # m^2, threshold for using GPS data
+    gpsCovThreshold: 1.0                        # m^2, threshold for using GPS data
+    poseCovThreshold: 0.0004                    # m^2, threshold for using GPS data
+    gpsFusionIntervalDistance: 0.1              # meters, regulate GPS data fusion frequency, 0 for every message
     
     # Export settings
     savePCD: false                              # https://github.com/TixiaoShan/LIO-SAM/issues/3

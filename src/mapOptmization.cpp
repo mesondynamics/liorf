@@ -94,6 +94,8 @@ public:
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
     liorf::msg::CloudInfo cloudInfo;
 
+    gtsam::Pose3 gps2Lidar = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(extTransLG.x(), extTransLG.y(), extTransLG.z()));
+
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
     
     pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
@@ -1421,10 +1423,12 @@ public:
                 float gps_x = thisGPS.pose.pose.position.x;
                 float gps_y = thisGPS.pose.pose.position.y;
                 float gps_z = thisGPS.pose.pose.position.z;
-                if (!useGpsElevation)
-                {
+                if (!useGpsElevation) {
                     gps_z = transformTobeMapped[5];
                     noise_z = 0.01;
+                } else {
+                    if (noise_z > gpsCovThreshold)
+                        continue;
                 }
 
                 // GPS not properly initialized (0,0,0)
@@ -1441,8 +1445,19 @@ public:
                 else
                     lastGPSPoint = curGPSPoint;
 
+                float gps_qx = thisGPS.pose.pose.orientation.x;
+                float gps_qy = thisGPS.pose.pose.orientation.y;
+                float gps_qz = thisGPS.pose.pose.orientation.z;
+                float gps_qw = thisGPS.pose.pose.orientation.w;
+
+                gtsam::Pose3 gpsPose = gtsam::Pose3(gtsam::Rot3::Quaternion(gps_qw, gps_qx, gps_qy, gps_qz), gtsam::Point3(gps_x, gps_y, gps_z));
+                gtsam::Pose3 lidarGpsPose = gpsPose.compose(gps2Lidar);
+
+                gps_x = lidarGpsPose.translation().x();
+                gps_y = lidarGpsPose.translation().y();
+                gps_z = lidarGpsPose.translation().z();
+
                 gtsam::Vector Vector3(3);
-                // Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);
                 Vector3 << noise_x, noise_y, noise_z;
                 noiseModel::Diagonal::shared_ptr gps_noise = noiseModel::Diagonal::Variances(Vector3);
                 gtsam::GPSFactor gps_factor(cloudKeyPoses3D->size(), gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);

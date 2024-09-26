@@ -119,10 +119,12 @@ public:
     vector<double> extRotV;
     vector<double> extRPYV;
     vector<double> extTransV;
+    vector<double> extTransVLG;
     Eigen::Matrix3d extRot;
     Eigen::Matrix3d extRPY;
     Eigen::Vector3d extTrans;
     Eigen::Quaterniond extQRPY;
+    Eigen::Vector3d extTransLG;
 
     // voxel filter paprams
     float mappingSurfLeafSize ;
@@ -267,11 +269,15 @@ public:
         std::vector < double > ze(zea, std::end(zea));
         declare_parameter("extrinsicTrans", ze);
         get_parameter("extrinsicTrans", extTransV);
+        declare_parameter("extrinsicTrans_lg", ze);
+        get_parameter("extrinsicTrans_lg", extTransVLG);
 
         extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRotV.data(), 3, 3);
         extRPY = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRPYV.data(), 3, 3);
         extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransV.data(), 3, 1);
         extQRPY = Eigen::Quaterniond(extRPY).inverse();
+
+        extTransLG = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransVLG.data(), 3, 1);
 
         declare_parameter<float>("mappingSurfLeafSize", 0.2f);
         get_parameter("mappingSurfLeafSize", mappingSurfLeafSize);

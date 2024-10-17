@@ -1426,9 +1426,6 @@ public:
                 if (!useGpsElevation) {
                     gps_z = transformTobeMapped[5];
                     noise_z = 0.01;
-                } else {
-                    if (noise_z > gpsCovThreshold)
-                        continue;
                 }
 
                 // GPS not properly initialized (0,0,0)

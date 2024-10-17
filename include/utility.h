@@ -2,7 +2,7 @@
 #ifndef _UTILITY_LIDAR_ODOMETRY_H_
 #define _UTILITY_LIDAR_ODOMETRY_H_
 #define PCL_NO_PRECOMPILE 
-// <!-- liorf_yjz_lucky_boy -->
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <std_msgs/msg/header.hpp>
@@ -13,6 +13,8 @@
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <common_lib.h>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -31,15 +33,14 @@
 #include <pcl/filters/crop_box.h> 
 #include <pcl_conversions/pcl_conversions.h>
 
-#include <opencv2/opencv.hpp>
-// #include <opencv/cv.h>
-
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
- 
+
+#include <opencv2/opencv.hpp>
+
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -72,8 +73,6 @@ class ParamServer : public rclcpp::Node
 public:
     string history_policy;
     string reliability_policy;
-
-    std::string robot_id;
 
     //Topics
     string pointCloudTopic;
@@ -159,7 +158,7 @@ public:
     float globalMapVisualizationLeafSize;
 
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
-    {   
+    {
         declare_parameter<string>("history_policy", "history_keep_last");
         get_parameter("history_policy", history_policy);
         declare_parameter<string>("reliability_policy", "reliability_reliable");
@@ -319,8 +318,7 @@ public:
         declare_parameter<float>("historyKeyframeFitnessScore", 0.3f);
         get_parameter("historyKeyframeFitnessScore", historyKeyframeFitnessScore);
 
-
-       declare_parameter<float>("globalMapVisualizationSearchRadius", 1e3f);
+        declare_parameter<float>("globalMapVisualizationSearchRadius", 1e3f);
         get_parameter("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius);
         declare_parameter<float>("globalMapVisualizationPoseDensity", 10.0);
         get_parameter("globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity);
@@ -384,7 +382,6 @@ double ROS_TIME(T msg)
 {
     return rclcpp::Time(msg).seconds();
 }
-
 
 template<typename T>
 void imuAngular2rosAngular(sensor_msgs::msg::Imu *thisImuMsg, T *angular_x, T *angular_y, T *angular_z)

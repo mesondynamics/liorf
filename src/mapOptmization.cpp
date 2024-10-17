@@ -1663,6 +1663,12 @@ public:
         geometry_msgs::msg::Quaternion quat_msg;
         tf2::convert(quat_tf, quat_msg);
         laserOdometryROS.pose.pose.orientation = quat_msg;
+        laserOdometryROS.pose.covariance[0] = poseCovariance(3,3);
+        laserOdometryROS.pose.covariance[1*6+1] = poseCovariance(4,4);
+        laserOdometryROS.pose.covariance[2*6+2] = poseCovariance(5,5);
+        laserOdometryROS.pose.covariance[3*6+3] = poseCovariance(0,0);
+        laserOdometryROS.pose.covariance[4*6+4] = poseCovariance(1,1);
+        laserOdometryROS.pose.covariance[5*6+5] = poseCovariance(2,2);
         pubLaserOdometryGlobal->publish(laserOdometryROS);
         
         // Publish TF

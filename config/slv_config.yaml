@@ -5,7 +5,7 @@
 
     # Topics
     pointCloudTopic: "/velodyne_points"         # Point cloud data
-    imuTopic: "/bno055/imu"                     # IMU data
+    imuTopic: "/imu"                            # IMU data
     odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "odometry/gps"                         # GPS odometry topic from navsat, see module_navsat.launch file
 
@@ -18,8 +18,8 @@
     # GPS Settings
     useImuHeadingInitialization: true           # if using GPS data, set to "true"
     useGpsElevation: true                       # if GPS elevation is bad, set to "false"
-    gpsCovThreshold: 0.0009                     # m^2, threshold for using GPS data
-    poseCovThreshold: 0.0009                    # m^2, threshold for using GPS data
+    gpsCovThreshold: 0.0004                     # m^2, threshold for using GPS data
+    poseCovThreshold: 0.0004                    # m^2, threshold for using GPS data
     gpsFusionIntervalDistance: 0.1              # meters, regulate GPS data fusion frequency, 0 for every message
     
     # Export settings
@@ -46,18 +46,18 @@
     imuRPYWeight: 0.01
 
     # Extrinsics: T_lg (lidar -> gps)
-    extrinsicTrans_lg: [0.59, 0.0, 0.15]
+    extrinsicTrans_lg: [0.49, 0.0, 0.24]
 
     # Extrinsics: T_lb (lidar -> imu)
     extrinsicTrans: [0.0, 0.0, 0.0]
-    extrinsicRot: [1.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0,
-                    0.0, 0.0, 1.0]
+    extrinsicRot: [-1.0, 0.0, 0.0,
+                    0.0, -1.0, 0.0,
+                    0.0, 0.0, -1.0]
 
     # This parameter is set only when the 9-axis IMU is used, but it must be a high-precision IMU. e.g. MTI-680
     extrinsicRPY: [1.0, 0.0, 0.0,
-                    0.0, -1.0, 0.0,
-                    0.0, 0.0, -1.0]
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0]
 
     # voxel filter paprams
     mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor

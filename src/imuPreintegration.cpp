@@ -141,17 +141,17 @@ public:
         laserOdometry.pose.pose.orientation = quat_msg;
         pubImuOdometry->publish(laserOdometry);
 
-        // publish tf
-        tf2::Transform tCur(tf2::Quaternion(laserOdometry.pose.pose.orientation.x, laserOdometry.pose.pose.orientation.y, laserOdometry.pose.pose.orientation.z, laserOdometry.pose.pose.orientation.w), 
-                                tf2::Vector3(laserOdometry.pose.pose.position.x, laserOdometry.pose.pose.position.y, laserOdometry.pose.pose.position.z));
-        if(lidarFrame != baselinkFrame)
-            tCur *= lidar2Baselink;
+        // // publish tf
+        // tf2::Transform tCur(tf2::Quaternion(laserOdometry.pose.pose.orientation.x, laserOdometry.pose.pose.orientation.y, laserOdometry.pose.pose.orientation.z, laserOdometry.pose.pose.orientation.w), 
+        //                         tf2::Vector3(laserOdometry.pose.pose.position.x, laserOdometry.pose.pose.position.y, laserOdometry.pose.pose.position.z));
+        // if(lidarFrame != baselinkFrame)
+        //     tCur *= lidar2Baselink;
 
-        tf2::Stamped<tf2::Transform> temp_odom_to_base(tCur, time_point, odometryFrame);
-        geometry_msgs::msg::TransformStamped trans_odom_to_base_link;
-        tf2::convert(temp_odom_to_base, trans_odom_to_base_link);
-        trans_odom_to_base_link.child_frame_id = baselinkFrame;
-        tfOdom2BaseLink->sendTransform(trans_odom_to_base_link);
+        // tf2::Stamped<tf2::Transform> temp_odom_to_base(tCur, time_point, odometryFrame);
+        // geometry_msgs::msg::TransformStamped trans_odom_to_base_link;
+        // tf2::convert(temp_odom_to_base, trans_odom_to_base_link);
+        // trans_odom_to_base_link.child_frame_id = baselinkFrame;
+        // tfOdom2BaseLink->sendTransform(trans_odom_to_base_link);
 
         // publish IMU path
         static nav_msgs::msg::Path imuPath;

@@ -169,7 +169,7 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
-        subCloud = create_subscription<liorf::msg::CloudInfo>("liorf/deskew/cloud_info", QosPolicy(history_policy, reliability_policy),
+        subCloud = create_subscription<liorf::msg::CloudInfo>("liorf/deskew/cloud_info", QosPolicyDepth1(history_policy, reliability_policy),
                     std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
         subGPS = create_subscription<nav_msgs::msg::Odometry>(gpsTopic, QosPolicy(history_policy, reliability_policy),
                     std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
@@ -1396,13 +1396,13 @@ public:
 
         while (!gpsQueue.empty())
         {
-            if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2)
+            if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.1)
             {
                 // message too old
                 // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 gpsQueue.pop_front();
             }
-            else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2)
+            else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.1)
             {
                 // message too new
                 // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);

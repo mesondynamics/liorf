@@ -414,6 +414,32 @@ void imuRPY2rosRPY(sensor_msgs::msg::Imu *thisImuMsg, T *rosRoll, T *rosPitch, T
     *rosYaw = imuYaw;
 }
 
+
+rclcpp::QoS QosPolicyDepth1(const string &history_policy, const string &reliability_policy)
+{
+    rmw_qos_profile_t qos_profile;
+    if (history_policy == "history_keep_last")
+        qos_profile.history = rmw_qos_history_policy_t::RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+    else if (history_policy == "history_keep_all")
+        qos_profile.history = rmw_qos_history_policy_t::RMW_QOS_POLICY_HISTORY_KEEP_ALL;
+
+    if (reliability_policy == "reliability_reliable")
+        qos_profile.reliability = rmw_qos_reliability_policy_t::RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+    else if (reliability_policy == "reliability_best_effort")
+        qos_profile.reliability = rmw_qos_reliability_policy_t::RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+
+    qos_profile.depth = 1;
+
+    qos_profile.durability = rmw_qos_durability_policy_t::RMW_QOS_POLICY_DURABILITY_VOLATILE;
+    qos_profile.deadline = RMW_QOS_DEADLINE_DEFAULT;
+    qos_profile.lifespan = RMW_QOS_LIFESPAN_DEFAULT;
+    qos_profile.liveliness = rmw_qos_liveliness_policy_t::RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT;
+    qos_profile.liveliness_lease_duration = RMW_QOS_LIVELINESS_LEASE_DURATION_DEFAULT;
+    qos_profile.avoid_ros_namespace_conventions = false;
+
+    return rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, qos_profile.depth), qos_profile);
+}
+
 rclcpp::QoS QosPolicy(const string &history_policy, const string &reliability_policy)
 {
     rmw_qos_profile_t qos_profile;

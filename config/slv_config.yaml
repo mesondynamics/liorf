@@ -7,7 +7,7 @@
     pointCloudTopic: "/velodyne_points"         # Point cloud data
     imuTopic: "/imu"                            # IMU data
     odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
-    gpsTopic: "odometry/gps"                         # GPS odometry topic from navsat, see module_navsat.launch file
+    gpsTopic: "/odometry/raw_gps"               # GPS odometry topic from navsat, see module_navsat.launch file
 
     # Frames
     lidarFrame: "base_link"
@@ -67,7 +67,7 @@
     rotation_tollerance: 1000.0                     # radians
 
     # CPU Params
-    numberOfCores: 4                              # number of cores for mapping optimization
+    numberOfCores: 8                              # number of cores for mapping optimization
     mappingProcessInterval: 0.0                  # seconds, regulate mapping frequency
 
     # Surrounding map

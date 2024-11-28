@@ -59,6 +59,8 @@
 #include <thread>
 #include <mutex>
 
+#include "livox_ros_driver2/msg/custom_msg.hpp"
+
 using namespace std;
 
 typedef pcl::PointXYZI PointType;
@@ -333,6 +335,9 @@ public:
         sensor_msgs::msg::Imu imu_out = imu_in;
         // rotate acceleration
         Eigen::Vector3d acc(imu_in.linear_acceleration.x, imu_in.linear_acceleration.y, imu_in.linear_acceleration.z);
+        if(sensor == SensorType::LIVOX) {
+            acc*=imuGravity;
+        }
         acc = extRot * acc;
         imu_out.linear_acceleration.x = acc.x();
         imu_out.linear_acceleration.y = acc.y();

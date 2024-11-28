@@ -56,6 +56,20 @@ struct MulranPointXYZIRT {
      (uint32_t, t, t) (int, ring, ring)
  )
 
+struct LivoxPointXYZIRT
+{
+    PCL_ADD_POINT4D
+    PCL_ADD_INTENSITY;
+    float time;
+    uint16_t ring;
+    uint16_t tag;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+POINT_CLOUD_REGISTER_POINT_STRUCT (LivoxPointXYZIRT,
+    (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity) (float, time, time)
+    (uint16_t, ring, ring) (uint16_t, tag, tag)
+)
+
 // Use the Velodyne point format as a common representation
 using PointXYZIRT = VelodynePointXYZIRT;
 
@@ -69,6 +83,7 @@ private:
     std::mutex odoLock;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subLaserCloud;
+    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr subLivoxLaserCloud;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subImu;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subOdom;
 
@@ -79,7 +94,9 @@ private:
     std::deque<nav_msgs::msg::Odometry> odomQueue;
 
     std::deque<sensor_msgs::msg::PointCloud2> cloudQueue;
+    std::deque<livox_ros_driver2::msg::CustomMsg> livoxCloudQueue;
     sensor_msgs::msg::PointCloud2 currentCloudMsg;
+    livox_ros_driver2::msg::CustomMsg currentLivoxCloudMsg;
 
     double *imuTime = new double[queueLength];
     double *imuRotX = new double[queueLength];
@@ -91,6 +108,7 @@ private:
     Eigen::Affine3f transStartInverse;
 
     pcl::PointCloud<PointXYZIRT>::Ptr laserCloudIn;
+    pcl::PointCloud<LivoxPointXYZIRT>::Ptr livoxLaserCloudIn;
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
     pcl::PointCloud<MulranPointXYZIRT>::Ptr tmpMulranCloudIn;
     pcl::PointCloud<PointType>::Ptr   fullCloud;
@@ -107,6 +125,8 @@ private:
     double timeScanEnd;
     std_msgs::msg::Header cloudHeader;
 
+    vector<int> columnIdnCountVec;
+
 public:
     ImageProjection(const rclcpp::NodeOptions & options) :
             ParamServer("liorf_imageProjection", options), deskewFlag(0)
@@ -119,6 +139,8 @@ public:
 
         subLaserCloud = create_subscription<sensor_msgs::msg::PointCloud2>(pointCloudTopic, QosPolicy(history_policy, reliability_policy), 
                     std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1));
+        subLivoxLaserCloud = create_subscription<livox_ros_driver2::msg::CustomMsg>(pointCloudTopic, QosPolicy(history_policy, reliability_policy), 
+                    std::bind(&ImageProjection::livoxCloudHandler, this, std::placeholders::_1));
 
         pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>( "liorf/deskew/cloud_deskewed", QosPolicy(history_policy, reliability_policy));
 
@@ -133,6 +155,7 @@ public:
     void allocateMemory()
     {
         laserCloudIn.reset(new pcl::PointCloud<PointXYZIRT>());
+        livoxLaserCloudIn.reset(new pcl::PointCloud<LivoxPointXYZIRT>());
         tmpOusterCloudIn.reset(new pcl::PointCloud<OusterPointXYZIRT>());
         tmpMulranCloudIn.reset(new pcl::PointCloud<MulranPointXYZIRT>());
         fullCloud.reset(new pcl::PointCloud<PointType>());
@@ -143,6 +166,7 @@ public:
     void resetParameters()
     {
         laserCloudIn->clear();
+        livoxLaserCloudIn->clear();
         fullCloud->clear();
 
         imuPointerCur = 0;
@@ -157,6 +181,7 @@ public:
             imuRotZ[i] = 0;
         }
 
+        columnIdnCountVec.assign(N_SCAN, 0);
     }
 
     ~ImageProjection(){}
@@ -201,6 +226,21 @@ public:
             return;
 
         projectPointCloud();
+
+        publishClouds();
+
+        resetParameters();
+    }
+
+    void livoxCloudHandler(const livox_ros_driver2::msg::CustomMsg::SharedPtr livoxCloudMsg)
+    {
+        if (!cacheLivoxPointCloud(livoxCloudMsg))
+            return;
+
+        if (!deskewInfo())
+            return;
+
+        projectLivoxPointCloud();
 
         publishClouds();
 
@@ -331,6 +371,51 @@ public:
             }
             if (deskewFlag == -1)
                 RCLCPP_WARN(get_logger(), "Point cloud timestamp not available, deskew function disabled, system will drift significantly!");
+        }
+
+        return true;
+    }
+
+    bool cacheLivoxPointCloud(const livox_ros_driver2::msg::CustomMsg::SharedPtr& livoxCloudMsg)
+    {
+        // cache point cloud
+        livoxCloudQueue.push_back(*livoxCloudMsg);
+        if (livoxCloudQueue.size() <= 2)
+            return false;
+
+        // convert cloud
+        currentLivoxCloudMsg = std::move(livoxCloudQueue.front());
+        livoxCloudQueue.pop_front();
+        livoxLaserCloudIn->clear();
+        livoxLaserCloudIn->reserve(currentLivoxCloudMsg.point_num);
+
+        livoxLaserCloudIn->header.frame_id = currentLivoxCloudMsg.header.frame_id;
+        livoxLaserCloudIn->header.stamp = rclcpp::Time(currentLivoxCloudMsg.header.stamp).nanoseconds() / 1000;
+        // livoxLaserCloudIn->header.seq = currentLivoxCloudMsg.header.seq;
+
+        LivoxPointXYZIRT point;
+        for(uint i=0;i<currentLivoxCloudMsg.point_num-1;i++)
+        {
+            point.x=currentLivoxCloudMsg.points[i].x; 
+            point.y=currentLivoxCloudMsg.points[i].y; 
+            point.z=currentLivoxCloudMsg.points[i].z; 
+            point.intensity=currentLivoxCloudMsg.points[i].reflectivity; 
+            point.tag=currentLivoxCloudMsg.points[i].tag; 
+            point.time=currentLivoxCloudMsg.points[i].offset_time*1e-9; 
+            point.ring=currentLivoxCloudMsg.points[i].line; 
+            livoxLaserCloudIn->push_back(point);
+        }
+
+        // get timestamp
+        cloudHeader = currentLivoxCloudMsg.header;
+        timeScanCur = rclcpp::Time(cloudHeader.stamp).seconds();
+        timeScanEnd = timeScanCur + livoxLaserCloudIn->points.back().time;
+
+        // check dense flag
+        if (livoxLaserCloudIn->is_dense == false)
+        {
+            RCLCPP_ERROR_STREAM(get_logger(), "Point cloud is not in dense format, please remove NaN points first!");
+            rclcpp::shutdown();
         }
 
         return true;
@@ -600,6 +685,52 @@ public:
                 continue;
 
             thisPoint = deskewPoint(&thisPoint, laserCloudIn->points[i].time);
+
+            fullCloud->push_back(thisPoint);
+        }
+    }
+
+
+    void projectLivoxPointCloud()
+    {
+        int cloudSize = livoxLaserCloudIn->points.size();
+        // range image projection
+        for (int i = 0 ; i < cloudSize; ++i)
+        {
+            PointType thisPoint;
+            thisPoint.x = livoxLaserCloudIn->points[i].x;
+            thisPoint.y = livoxLaserCloudIn->points[i].y;
+            thisPoint.z = livoxLaserCloudIn->points[i].z;
+            thisPoint.intensity = livoxLaserCloudIn->points[i].intensity;
+            // thisPoint.intensity = (livoxLaserCloudIn->points[i].ring+1) * 17;
+
+            float range = common_lib_->pointDistance(thisPoint);
+            if (range < lidarMinRange || range > lidarMaxRange)
+                continue;
+
+            int rowIdn = livoxLaserCloudIn->points[i].ring;
+            if (rowIdn < 0 || rowIdn >= N_SCAN)
+                continue;
+
+            if (rowIdn % downsampleRate != 0)
+                continue;
+
+            int columnIdn = -1;
+            columnIdn = columnIdnCountVec[rowIdn];
+            columnIdnCountVec[rowIdn] += 1;
+            
+            if (columnIdn < 0 || columnIdn >= Horizon_SCAN)
+                continue;
+
+            // if (rangeMat.at<float>(rowIdn, columnIdn) != FLT_MAX)
+            //     continue;
+
+            thisPoint = deskewPoint(&thisPoint, livoxLaserCloudIn->points[i].time);
+
+            // rangeMat.at<float>(rowIdn, columnIdn) = range;
+
+            // int index = columnIdn + rowIdn * Horizon_SCAN;
+            // fullCloud->points[index] = thisPoint;
 
             fullCloud->push_back(thisPoint);
         }

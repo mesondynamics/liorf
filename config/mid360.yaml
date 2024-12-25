@@ -38,11 +38,11 @@
     # IMU Settings
     imuType: 0                                  # 0: 6-axis  1: 9-axis
     imuRate: 200.0
-    imuAccNoise: 3.9939570888238808e-03
-    imuGyrNoise: 1.5636343949698187e-03
-    imuAccBiasN: 6.4356659353532566e-05
-    imuGyrBiasN: 3.5640318696367613e-05
-    imuGravity: 9.80511
+    imuAccNoise: 0.018023020815332524
+    imuGyrNoise: 0.0035006763372024594
+    imuAccBiasN: 0.3241730182125347
+    imuGyrBiasN: 0.034421331861596106
+    imuGravity: 9.703206306615066
     imuRPYWeight: 0.01
 
     # Extrinsics: T_lg (lidar -> gps)

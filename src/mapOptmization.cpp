@@ -1435,6 +1435,9 @@ public:
                 thisGPS.pose.pose.position.x = 0;
                 thisGPS.pose.pose.position.y = 0;
                 thisGPS.pose.pose.position.z = 0;
+                thisGPS.pose.covariance[0*6+0] = 99999.0;
+                thisGPS.pose.covariance[1*6+1] = 99999.0;
+                thisGPS.pose.covariance[2*6+2] = 99999.0;
                 gpsPathSyncLIO.push_back(thisGPS);
             } else {
                 gpsPathSyncLIO.push_back(gpsPath.back());
@@ -1454,6 +1457,9 @@ public:
                 thisGPS.pose.pose.position.x = 0;
                 thisGPS.pose.pose.position.y = 0;
                 thisGPS.pose.pose.position.z = 0;
+                thisGPS.pose.covariance[0*6+0] = 99999.0;
+                thisGPS.pose.covariance[1*6+1] = 99999.0;
+                thisGPS.pose.covariance[2*6+2] = 99999.0;
                 gpsPathSyncLIO.push_back(thisGPS);
             } else {
                 gpsPathSyncLIO.push_back(gpsPath.back());
@@ -1491,13 +1497,13 @@ public:
             if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.1)
             {
                 // message too old
-                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
+                RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 gpsQueue.pop_front();
             }
             else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.1)
             {
                 // message too new
-                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
+                RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 break;
             }
             else

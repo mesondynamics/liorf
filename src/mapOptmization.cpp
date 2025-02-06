@@ -91,10 +91,15 @@ public:
 
     rclcpp::Service<liorf::srv::SaveMap>::SharedPtr srvSaveMap;
 
+    nav_msgs::msg::Odometry gpsOdom;
+    vector<nav_msgs::msg::Odometry> gpsPath;
+    vector<nav_msgs::msg::Odometry> gpsPathSyncLIO;
+
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
     liorf::msg::CloudInfo cloudInfo;
 
     gtsam::Pose3 gps2Lidar = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(extTransLG.x(), extTransLG.y(), extTransLG.z()));
+    gtsam::Pose3 lidar2Gps = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(-extTransLG.x(), -extTransLG.y(), -extTransLG.z()));
 
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
     
@@ -169,7 +174,7 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
-        subCloud = create_subscription<liorf::msg::CloudInfo>("liorf/deskew/cloud_info", QosPolicy(history_policy, reliability_policy),
+        subCloud = create_subscription<liorf::msg::CloudInfo>("liorf/deskew/cloud_info", QosPolicyDepth1(history_policy, reliability_policy),
                     std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
         subGPS = create_subscription<nav_msgs::msg::Odometry>(gpsTopic, QosPolicy(history_policy, reliability_policy),
                     std::bind(&mapOptimization::gpsHandler, this, std::placeholders::_1));
@@ -280,6 +285,7 @@ public:
     void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg)
     {
         gpsQueue.push_back(*gpsMsg);
+        gpsPath.push_back(*gpsMsg);
     }
 
     void pointAssociateToMap(PointType const * const pi, PointType * const po)
@@ -345,60 +351,120 @@ public:
         return thisPose6D;
     }
 
+    std::string covarianceToString(const std::array<double, 36>& covariance) {
+        std::ostringstream ss;
+        for (size_t i = 0; i < covariance.size(); ++i) {
+            ss << covariance[i];
+            if (i < covariance.size() - 1) {
+                ss << ",";
+            }
+        }
+        return ss.str();
+    }
+
     bool saveMapService(const std::shared_ptr<liorf::srv::SaveMap::Request> req,
                                 std::shared_ptr<liorf::srv::SaveMap::Response> res)
     {
-      string saveMapDirectory;
+        string saveMapDirectory;
 
-      cout << "****************************************************" << endl;
-      cout << "Saving map to pcd files ..." << endl;
-      if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
-      else saveMapDirectory = std::getenv("HOME") + req->destination;
-      cout << "Save destination: " << saveMapDirectory << endl;
-      // create directory and remove old files;
-      int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
-      unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
-      // save key frame transformations
-      pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
-      pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *cloudKeyPoses6D);
-      // extract global point cloud map
+        cout << "****************************************************" << endl;
+        cout << "Saving map to pcd files ..." << endl;
+        if(req->destination.empty()) saveMapDirectory = savePCDDirectory;
+        else saveMapDirectory = req->destination;
+        cout << "Save destination: " << saveMapDirectory << endl;
+        // create directory and remove old files;
+        int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
+        unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
+        if (unused == 0) {
+            cout << "Create directory " << saveMapDirectory << " successfully" << endl;
+        } else {
+            cout << "Fail to create directory " << saveMapDirectory << endl;
+            return false;
+        }
+        // save key frame transformations
+        pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
+        pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *cloudKeyPoses6D);
+        // extract global point cloud map
 
-      pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
-      pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
-      pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
-      for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) {
-          *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
-          cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
-      }
+        pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+        for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) {
+            *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
+            cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
+        }
 
-      if(req->resolution != 0)
-      {
-        cout << "\n\nSave resolution: " << req->resolution << endl;
-        // down-sample and save surf cloud
-        downSizeFilterSurf.setInputCloud(globalSurfCloud);
-        downSizeFilterSurf.setLeafSize(req->resolution, req->resolution, req->resolution);
-        downSizeFilterSurf.filter(*globalSurfCloudDS);
-        pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloudDS);
-      }
-      else
-      {
+        if(req->resolution != 0) {
+            cout << "\n\nSave resolution: " << req->resolution << endl;
+            // down-sample and save surf cloud
+            downSizeFilterSurf.setInputCloud(globalSurfCloud);
+            downSizeFilterSurf.setLeafSize(req->resolution, req->resolution, req->resolution);
+            downSizeFilterSurf.filter(*globalSurfCloudDS);
+            pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloudDS);
+        } else {
+            // save surf cloud
+            pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloud);
+        }
 
-        // save surf cloud
-        pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloud);
-      }
+        // save global point cloud map
+        *globalMapCloud += *globalSurfCloud;
 
-      // save global point cloud map
-      *globalMapCloud += *globalSurfCloud;
+        int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
+        res->success = ret == 0;
 
-      int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
-      res->success = ret == 0;
+        downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
 
-      downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+        cout << "****************************************************" << endl;
+        cout << "Saving map to pcd files completed\n" << endl;
 
-      cout << "****************************************************" << endl;
-      cout << "Saving map to pcd files completed\n" << endl;
+        cout << "****************************************************" << endl;
+        cout << "Saving GPS path to csv files ..." << endl;
+        cout << "Save destination: " << saveMapDirectory << endl;
+        std::ofstream gpsPathFile(saveMapDirectory + "/gps_path.csv");
+        if(!gpsPathFile.is_open()) {
+            cout << "Fail to create file " << saveMapDirectory + "/gps_path.csv" << endl;
+            return false;
+        }
+        gpsPathFile << "timestamp,x,y,z,orientation_x,orientation_y,orientation_z,orientation_w,pose_covariance" << std::endl;
+        for (const auto& odometry : gpsPathSyncLIO) {
+            const auto& pose = odometry.pose.pose;
+            gpsPathFile << odometry.header.stamp.sec << "." << odometry.header.stamp.nanosec << ",";
+            gpsPathFile << pose.position.x << "," << pose.position.y << "," << pose.position.z << ",";
+            gpsPathFile << pose.orientation.x << "," << pose.orientation.y << ",";
+            gpsPathFile << pose.orientation.z << "," << pose.orientation.w << ",";
+            gpsPathFile << "\"" << covarianceToString(odometry.pose.covariance) << "\"" << std::endl;
+        }
+        gpsPathFile.close();
+        cout << "Saving GPS path to csv files completed\n" << endl;
 
-      return true;
+        cout << "****************************************************" << endl;
+        cout << "Saving LIO path to csv files ..." << endl;
+        cout << "Save destination: " << saveMapDirectory << endl;
+        std::ofstream lioPathFile(saveMapDirectory + "/lio_path.csv");
+        if(!lioPathFile.is_open()) {
+            cout << "Fail to create file " << saveMapDirectory + "/lio_path.csv" << endl;
+            return false;
+        }
+        lioPathFile << "x,y,z,orientation_x,orientation_y,orientation_z,orientation_w" << std::endl;
+        for (const auto& poseStamped : globalPath.poses) {
+            const auto& pose = poseStamped.pose;
+
+            gtsam::Pose3 lidarPose = gtsam::Pose3(
+                gtsam::Rot3::Quaternion(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z), 
+                gtsam::Point3(pose.position.x, pose.position.y, pose.position.z));
+            gtsam::Pose3 gpsPose = lidarPose.compose(lidar2Gps);
+            // pose.position.x = gpsPose.translation().x();
+            // pose.position.y = gpsPose.translation().y();
+            // pose.position.z = gpsPose.translation().z();
+
+            lioPathFile << gpsPose.translation().x() << "," << gpsPose.translation().y() << "," << gpsPose.translation().z() << ",";
+            lioPathFile << pose.orientation.x << "," << pose.orientation.y << ",";
+            lioPathFile << pose.orientation.z << "," << pose.orientation.w << std::endl;
+        }
+        lioPathFile.close();
+        cout << "Saving LIO path to csv files completed\n" << endl;
+
+        return true;
     }
 
     void visualizeGlobalMapThread()
@@ -1360,12 +1426,44 @@ public:
             noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Variances((Eigen::VectorXd(6) << 1e-2, 1e-2, M_PI*M_PI, 1e8, 1e8, 1e8).finished()); // rad*rad, meter*meter
             gtSAMgraph.add(PriorFactor<Pose3>(0, trans2gtsamPose(transformTobeMapped), priorNoise));
             initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped));
+            if (gpsPath.empty()) {
+                nav_msgs::msg::Odometry thisGPS;
+                thisGPS.pose.pose.orientation.x = 0;
+                thisGPS.pose.pose.orientation.y = 0;
+                thisGPS.pose.pose.orientation.z = 0;
+                thisGPS.pose.pose.orientation.w = 1;
+                thisGPS.pose.pose.position.x = 0;
+                thisGPS.pose.pose.position.y = 0;
+                thisGPS.pose.pose.position.z = 0;
+                thisGPS.pose.covariance[0*6+0] = 99999.0;
+                thisGPS.pose.covariance[1*6+1] = 99999.0;
+                thisGPS.pose.covariance[2*6+2] = 99999.0;
+                gpsPathSyncLIO.push_back(thisGPS);
+            } else {
+                gpsPathSyncLIO.push_back(gpsPath.back());
+            }
         }else{
             noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Eigen::VectorXd(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
             gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
             gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped);
             gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size()-1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), odometryNoise));
             initialEstimate.insert(cloudKeyPoses3D->size(), poseTo);
+            if (gpsPath.empty()) {
+                nav_msgs::msg::Odometry thisGPS;
+                thisGPS.pose.pose.orientation.x = 0;
+                thisGPS.pose.pose.orientation.y = 0;
+                thisGPS.pose.pose.orientation.z = 0;
+                thisGPS.pose.pose.orientation.w = 1;
+                thisGPS.pose.pose.position.x = 0;
+                thisGPS.pose.pose.position.y = 0;
+                thisGPS.pose.pose.position.z = 0;
+                thisGPS.pose.covariance[0*6+0] = 99999.0;
+                thisGPS.pose.covariance[1*6+1] = 99999.0;
+                thisGPS.pose.covariance[2*6+2] = 99999.0;
+                gpsPathSyncLIO.push_back(thisGPS);
+            } else {
+                gpsPathSyncLIO.push_back(gpsPath.back());
+            }
         }
     }
 
@@ -1396,16 +1494,16 @@ public:
 
         while (!gpsQueue.empty())
         {
-            if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2)
+            if (ROS_TIME(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.1)
             {
                 // message too old
-                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
+                RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "drop gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 gpsQueue.pop_front();
             }
-            else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2)
+            else if (ROS_TIME(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.1)
             {
                 // message too new
-                // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
+                RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "wait gps msg: %f, current time: %f", ROS_TIME(gpsQueue.front().header.stamp), timeLaserInfoCur);
                 break;
             }
             else
@@ -1761,6 +1859,11 @@ public:
             *cloudOut = *transformPointCloud(cloudOut,  &thisPose6D);
             publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, odometryFrame);
         }
+
+        // std::cout << "odom num: " << globalPath.poses.size() << std::endl;
+        // std::cout << "gps num: " << gpsPath.size() << std::endl;
+        std::cout << "Number of reconstructed waypoints: " << globalPath.poses.size() << std::endl;
+
         // publish path
         if (pubPath->get_subscription_count() != 0)
         {

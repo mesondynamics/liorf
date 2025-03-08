@@ -137,8 +137,8 @@ public:
         subOdom = create_subscription<nav_msgs::msg::Odometry>(odomTopic+"_incremental", QosPolicy(history_policy, reliability_policy),
                     std::bind(&ImageProjection::odometryHandler, this, std::placeholders::_1));
 
-        subLaserCloud = create_subscription<sensor_msgs::msg::PointCloud2>(pointCloudTopic, QosPolicy(history_policy, reliability_policy), 
-                    std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1));
+        // subLaserCloud = create_subscription<sensor_msgs::msg::PointCloud2>(pointCloudTopic, QosPolicy(history_policy, reliability_policy), 
+        //             std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1));
         subLivoxLaserCloud = create_subscription<livox_ros_driver2::msg::CustomMsg>(pointCloudTopic, QosPolicy(history_policy, reliability_policy), 
                     std::bind(&ImageProjection::livoxCloudHandler, this, std::placeholders::_1));
 

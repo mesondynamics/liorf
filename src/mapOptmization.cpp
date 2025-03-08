@@ -96,6 +96,7 @@ public:
     vector<nav_msgs::msg::Odometry> gpsPathSyncLIO;
 
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
+    std::deque<nav_msgs::msg::Odometry> gpsQueueForRecord;
     liorf::msg::CloudInfo cloudInfo;
 
     gtsam::Pose3 gps2Lidar = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(extTransLG.x(), extTransLG.y(), extTransLG.z()));
@@ -285,7 +286,8 @@ public:
     void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg)
     {
         gpsQueue.push_back(*gpsMsg);
-        gpsPath.push_back(*gpsMsg);
+        // gpsPath.push_back(*gpsMsg);
+        gpsQueueForRecord.push_back(*gpsMsg);
     }
 
     void pointAssociateToMap(PointType const * const pi, PointType * const po)
@@ -1426,7 +1428,7 @@ public:
             noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Variances((Eigen::VectorXd(6) << 1e-2, 1e-2, M_PI*M_PI, 1e8, 1e8, 1e8).finished()); // rad*rad, meter*meter
             gtSAMgraph.add(PriorFactor<Pose3>(0, trans2gtsamPose(transformTobeMapped), priorNoise));
             initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped));
-            if (gpsPath.empty()) {
+            if (gpsQueueForRecord.empty()) {
                 nav_msgs::msg::Odometry thisGPS;
                 thisGPS.pose.pose.orientation.x = 0;
                 thisGPS.pose.pose.orientation.y = 0;
@@ -1440,7 +1442,10 @@ public:
                 thisGPS.pose.covariance[2*6+2] = 99999.0;
                 gpsPathSyncLIO.push_back(thisGPS);
             } else {
-                gpsPathSyncLIO.push_back(gpsPath.back());
+                gpsPathSyncLIO.push_back(gpsQueueForRecord.back());
+                while (gpsQueueForRecord.size() > 1) {
+                    gpsQueueForRecord.pop_front();
+                }
             }
         }else{
             noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Eigen::VectorXd(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
@@ -1448,7 +1453,7 @@ public:
             gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped);
             gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size()-1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), odometryNoise));
             initialEstimate.insert(cloudKeyPoses3D->size(), poseTo);
-            if (gpsPath.empty()) {
+            if (gpsQueueForRecord.empty()) {
                 nav_msgs::msg::Odometry thisGPS;
                 thisGPS.pose.pose.orientation.x = 0;
                 thisGPS.pose.pose.orientation.y = 0;
@@ -1462,7 +1467,10 @@ public:
                 thisGPS.pose.covariance[2*6+2] = 99999.0;
                 gpsPathSyncLIO.push_back(thisGPS);
             } else {
-                gpsPathSyncLIO.push_back(gpsPath.back());
+                gpsPathSyncLIO.push_back(gpsQueueForRecord.back());
+                while (gpsQueueForRecord.size() > 1) {
+                    gpsQueueForRecord.pop_front();
+                }
             }
         }
     }
@@ -1751,7 +1759,7 @@ public:
         nav_msgs::msg::Odometry laserOdometryROS;
         laserOdometryROS.header.stamp = timeLaserInfoStamp;
         laserOdometryROS.header.frame_id = odometryFrame;
-        laserOdometryROS.child_frame_id = lidarFrame;
+        laserOdometryROS.child_frame_id = "odom_mapping";
         laserOdometryROS.pose.pose.position.x = transformTobeMapped[3];
         laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
         laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
@@ -1769,15 +1777,15 @@ public:
         laserOdometryROS.pose.covariance[5*6+5] = poseCovariance(2,2);
         pubLaserOdometryGlobal->publish(laserOdometryROS);
         
-        // // Publish TF
-        // quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        // tf2::Transform t_odom_to_lidar = tf2::Transform(quat_tf, tf2::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
-        // tf2::TimePoint time_point = tf2_ros::fromRclcpp(timeLaserInfoStamp);
-        // tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, mapFrame);
-        // geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
-        // tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
-        // trans_odom_to_lidar.child_frame_id = lidarFrame;
-        // br->sendTransform(trans_odom_to_lidar);
+        // Publish TF
+        quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
+        tf2::Transform t_odom_to_lidar = tf2::Transform(quat_tf, tf2::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
+        tf2::TimePoint time_point = tf2_ros::fromRclcpp(timeLaserInfoStamp);
+        tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, odometryFrame);
+        geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
+        tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
+        trans_odom_to_lidar.child_frame_id = "lidar_link";
+        br->sendTransform(trans_odom_to_lidar);
 
         // Publish odometry for ROS (incremental)
         static bool lastIncreOdomPubFlag = false;
